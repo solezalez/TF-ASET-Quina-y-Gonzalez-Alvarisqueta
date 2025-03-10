@@ -1,0 +1,108 @@
+---
+title: "Indicadores del mercado laboral en Argentina. Datos de la Encuesta Permanente de Hogares. Tercer Trimestre de 2024"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(shiny)
+library(ggplot2)
+library(eph)
+
+base <- get_microdata(year = 2024,period = 3)
+
+precariedad_rama <- base %>%
+  organize_caes() %>%
+  mutate(PONDIIO = as.numeric(PONDIIO)) %>% #Evitar integer overflow
+  filter(ESTADO == 1, CAT_OCUP == 3) %>% 
+  group_by(TRIMESTRE,ANO4,caes_eph_label) %>% 
+  summarise(asalariados = sum(PONDERA,na.rm = T),
+            salario_prom = weighted.mean(P21,PONDIIO,na.rm = T),
+            registrados = sum(PONDERA[PP07H == 1],na.rm = T),
+            no_registrados = sum(PONDERA[PP07H == 2],na.rm = T),
+            tasa_no_reg = no_registrados/asalariados) %>% 
+  mutate(tasa_no_reg = round(tasa_no_reg,digits = 2),
+         salario_prom = round(salario_prom,digits = 0))
+load("C:/Users/Soledad/Documents/Mercado_trabajo_edades.RData")
+load("C:/Users/Soledad/Documents/ocupadosyprecariedad.RData")
+
+# Filtrar el dataset según el estado de ocupación
+salario_y_no_registro <- ocupados_2024_t3_indicadores_prec_SIGNOS %>% 
+  filter(ESTADO == 1, CAT_OCUP == 3) %>% 
+  group_by(REGION, AGLOMERADO, CH04) %>%   # Agrupar por SEXO
+  summarise(tasa_no_reg = sum(PONDERA[PP07H == 2])/sum(PONDERA),
+            salario_prom = weighted.mean(P21, PONDIIO),
+            asalariados = sum(PONDERA)) %>%
+  ungroup()
+
+getwd()
+
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Tasa de no registro por Rama de ocupación
+
+```{r}
+grafico_ramas <- ggplot(
+  precariedad_rama,
+  mapping = aes(x = tasa_no_reg,
+                y = reorder(caes_eph_label,tasa_no_reg),
+                fill = caes_eph_label,
+                text = paste0(
+                  "</br> Asalariados: ", asalariados,
+                  "</br> Tasa No Reg: ",tasa_no_reg,
+                  "</br> Salario Prom: ",salario_prom))
+  )+
+  geom_col()+
+  labs(y = "",x= "Tasa de no registro")+ 
+  theme(legend.position = "none")
+
+ggplotly(grafico_ramas,tooltip = "text")
+
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Tabla de Indicadores laborales por Grupos poblacionales según la edad
+
+```{r}
+
+Mercado_trabajo_edades
+
+
+
+```
+
+### Chart C
+
+```{r}
+
+ gg <- ggplot(data = salario_y_no_registro,
+               aes(x = salario_prom,
+                   y = tasa_no_reg,
+                   size = asalariados,
+                   color = REGION)) +
+    geom_point() +
+    labs(title = "Salario promedio y tasa de no registro por aglomerados",
+         subtitle = "31 Aglomerados. 3er Trimestre de 2024.",
+         x = "Salario promedio",
+         y = "Tasa de no registro") +
+    theme_minimal() +
+    guides(size = "none") +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    scale_x_continuous(labels = scales::number_format(big.mark = ".", decimal.mark = ","))
+  
+  ggplotly(gg)  # Convertir el gráfico ggplot en interactivo
+
+
+```
+
